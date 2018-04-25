@@ -25,24 +25,24 @@ import qualified Data.Yaml            as Yaml
 import           GHC.Generics         (Generic)
 import           Network.HTTP.Types   as Http
 
-data Casette = Casette
-  { casetteHttpInteractions :: [Interaction]
-  , casetteRecordedWith     :: Maybe Text
+data Cassette = Cassette
+  { cassetteHttpInteractions :: [Interaction]
+  , cassetteRecordedWith     :: Maybe Text
   } deriving (Show, Typeable, Generic)
 
-instance ToJSON Casette where
-  toJSON Casette{..} =
+instance ToJSON Cassette where
+  toJSON Cassette{..} =
     Json.object
-      [ "http_interactions" .= casetteHttpInteractions
-      , "recorded_with"     .= casetteRecordedWith
+      [ "http_interactions" .= cassetteHttpInteractions
+      , "recorded_with"     .= cassetteRecordedWith
       ]
 
-instance FromJSON Casette where
-  parseJSON = Json.withObject "Casette" $ \o -> do
-    casetteHttpInteractions <-
+instance FromJSON Cassette where
+  parseJSON = Json.withObject "Cassette" $ \o -> do
+    cassetteHttpInteractions <-
       maybe (o .: "http_interactions") pure =<< o .:? "interactions"
-    casetteRecordedWith <- o .:? "recorded_with"
-    pure Casette{..}
+    cassetteRecordedWith <- o .:? "recorded_with"
+    pure Cassette{..}
 
 data Interaction = Interaction
   { interactionRequest    :: Request
