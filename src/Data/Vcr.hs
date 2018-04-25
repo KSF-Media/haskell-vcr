@@ -163,14 +163,14 @@ data Body = Body
   , bodyString   :: ByteString
   } deriving (Show, Eq, Ord, Typeable, Generic)
 
+-- TODO: Support more funny encodings ASCII, Latin1, KOI-8, base64?, gzip-base64?
+
 instance ToJSON Body where
   toJSON Body{..} =
     Json.object
       [ "encoding" .= bodyEncoding
       , "string" .=
           case bodyEncoding of
-            -- | TODO: support more fun encodings
-            --   base64?, gzip-base64?
             "UTF-8" -> Text.decodeUtf8 bodyString
             _       -> Text.decodeUtf8 bodyString
       ]
@@ -178,13 +178,11 @@ instance ToJSON Body where
 instance FromJSON Body where
   parseJSON = Json.withObject "Body" $ \o -> do
     bodyEncoding <- fromMaybe "UTF-8" <$> o .:? "encoding"
-    let decode =
-          case bodyEncoding of
-            "UTF-8" -> Text.encodeUtf8
-            -- | TODO: support more fun encodings
-            --   base64?, gzip-base64?
-            _       -> fail "Unsupported body encoding"
-    bodyString  <- decode <$> o .: "string"
+    bodyString <- do
+      string <- o .: "string"
+      case bodyEncoding of
+        "UTF-8" -> pure $ Text.encodeUtf8 string
+        _       -> fail "Unsupported body encoding"
     pure Body{..}
 
 
