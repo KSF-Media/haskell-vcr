@@ -5,29 +5,35 @@
 module Data.Vcr where
 
 import           Control.Applicative
-import           Data.Aeson           (FromJSON (parseJSON), ToJSON (toJSON),
-                                       (.:), (.:?), (.=))
-import qualified Data.Aeson           as Json
-import qualified Data.Aeson.Types     as Json (Parser)
-import           Data.ByteString      (ByteString)
-import qualified Data.ByteString      as ByteString
-import qualified Data.CaseInsensitive as CaseInsensitive
-import           Data.Foldable        (foldl)
-import qualified Data.HashMap.Lazy    as HashMap
-import           Data.Maybe           (fromMaybe)
-import           Data.Monoid          ((<>))
-import           Data.Text            (Text)
-import qualified Data.Text            as Text
-import qualified Data.Text.Encoding   as Text
-import qualified Data.Time            as Time
-import           Data.Traversable     (for)
-import           Data.Typeable        (Typeable)
-import qualified Data.Vector          as Vector
-import qualified Data.Yaml            as Yaml
-import           GHC.Generics         (Generic)
-import           Network.HTTP.Types   as Http
-import qualified Network.URI          as Network
-import           Text.Read            (readMaybe)
+import           Control.Monad.Catch    (MonadThrow, throwM)
+import           Control.Monad.IO.Class (MonadIO, liftIO)
+import           Data.Aeson             (FromJSON (parseJSON), ToJSON (toJSON),
+                                         (.:), (.:?), (.=))
+import qualified Data.Aeson             as Json
+import qualified Data.Aeson.Types       as Json (Parser)
+import           Data.ByteString        (ByteString)
+import qualified Data.ByteString        as ByteString
+import qualified Data.CaseInsensitive   as CaseInsensitive
+import           Data.Foldable          (foldl)
+import qualified Data.HashMap.Lazy      as HashMap
+import           Data.Maybe             (fromMaybe)
+import           Data.Monoid            ((<>))
+import           Data.Text              (Text)
+import qualified Data.Text              as Text
+import qualified Data.Text.Encoding     as Text
+import qualified Data.Time              as Time
+import           Data.Traversable       (for)
+import           Data.Typeable          (Typeable)
+import qualified Data.Vector            as Vector
+import qualified Data.Yaml              as Yaml
+import           GHC.Generics           (Generic)
+import           Network.HTTP.Types     as Http
+import qualified Network.URI            as Network
+import           Text.Read              (readMaybe)
+
+decodeCassetteFile :: (MonadIO m, MonadThrow m) => FilePath -> m Cassette
+decodeCassetteFile path =
+  either throwM pure =<< liftIO (Yaml.decodeFileEither path)
 
 data Cassette = Cassette
   { cassetteHttpInteractions :: [Interaction]
