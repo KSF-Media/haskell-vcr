@@ -16,6 +16,7 @@ import qualified Data.HashMap.Lazy    as HashMap
 import           Data.Maybe           (fromMaybe)
 import           Data.Monoid          ((<>))
 import           Data.Text            (Text)
+import qualified Data.Text            as Text
 import qualified Data.Text.Encoding   as Text
 import qualified Data.Time            as Time
 import           Data.Traversable     (for)
@@ -24,6 +25,7 @@ import qualified Data.Vector          as Vector
 import qualified Data.Yaml            as Yaml
 import           GHC.Generics         (Generic)
 import           Network.HTTP.Types   as Http
+import           Text.Read            (readMaybe)
 
 data Cassette = Cassette
   { cassetteHttpInteractions :: [Interaction]
@@ -107,7 +109,7 @@ data Response = Response
   { responseStatus      :: Http.Status
   , responseHeaders     :: [Http.Header]
   , responseBody        :: Maybe Body
-  , responseHttpVersion :: Maybe Text -- TODO: Use Http.HttpVersion
+  , responseHttpVersion :: Maybe Http.HttpVersion
   } deriving (Show, Eq, Ord, Typeable, Generic)
 
 instance ToJSON Response where
@@ -119,9 +121,11 @@ instance ToJSON Response where
           ]
       , "headers"      .= headersToJson responseHeaders
       , "body"         .= responseBody
-      , "http_version" .= responseHttpVersion
+      , "http_version" .=
+          fmap
+            (\Http.HttpVersion{..} -> show httpMajor <> "." <> show httpMinor)
+            responseHttpVersion
       ]
-
 instance FromJSON Response where
   parseJSON = Json.withObject "Response" $ \o -> do
     responseStatus <-
@@ -129,13 +133,20 @@ instance FromJSON Response where
     responseHeaders <-
       maybe (pure []) parseJsonHeaders =<< o .:? "headers"
     responseBody <- o .:? "body"
-    responseHttpVersion <- o .:? "http_version"
+    responseHttpVersion <- traverse parseVersion =<< o .:? "http_version"
     pure Response{..}
     where
       parseStatus = Json.withObject "Status" $ \o -> do
         statusCode <- o .: "code"
         statusMessage <- Text.encodeUtf8 <$> o .: "message"
         pure Http.Status{..}
+
+      parseVersion v
+        | [major, minor] <- Text.splitOn "." v
+        , Just httpMajor <- readMaybe $ Text.unpack major
+        , Just httpMinor <- readMaybe $ Text.unpack minor
+        = pure Http.HttpVersion{..}
+        | otherwise = fail $ "Failed to parse http version: " <> Text.unpack v
 
 parseJsonHeaders :: Json.Value -> Json.Parser [Http.Header]
 parseJsonHeaders =
