@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE ViewPatterns      #-}
 module Data.Vcr where
 
 import           Control.Applicative
@@ -25,6 +26,7 @@ import qualified Data.Vector          as Vector
 import qualified Data.Yaml            as Yaml
 import           GHC.Generics         (Generic)
 import           Network.HTTP.Types   as Http
+import qualified Network.URI          as Network
 import           Text.Read            (readMaybe)
 
 data Cassette = Cassette
@@ -82,7 +84,7 @@ instance FromJSON Interaction where
 
 data Request = Request
   { requestMethod  :: Http.Method
-  , requestUri     :: Text
+  , requestUri     :: Network.URI
   , requestHeaders :: [Http.Header]
   , requestBody    :: Maybe Body
   } deriving (Show, Eq, Ord, Typeable, Generic)
@@ -91,7 +93,7 @@ instance ToJSON Request where
   toJSON Request{..} =
     Json.object
       [ "method"  .= Text.decodeUtf8 requestMethod
-      , "uri"     .= requestUri
+      , "uri"     .= Network.uriToString id requestUri ""
       , "headers" .= headersToJson requestHeaders
       , "body"    .= requestBody
       ]
@@ -99,11 +101,14 @@ instance ToJSON Request where
 instance FromJSON Request where
   parseJSON = Json.withObject "Request" $ \o -> do
     requestMethod <- Text.encodeUtf8 <$> o .: "method"
-    requestUri    <- o .: "uri"
+    requestUri    <- parseUri =<< o .: "uri"
     requestBody   <- o .: "body"
     requestHeaders <-
       maybe (pure []) parseJsonHeaders =<< o .:? "headers"
     pure Request{..}
+    where
+      parseUri (Network.parseURI -> Just uri) = pure uri
+      parseUri uri = fail $ "Failed to parse uri: " <> uri
 
 data Response = Response
   { responseStatus      :: Http.Status
