@@ -17,7 +17,7 @@ import qualified Data.CaseInsensitive   as CaseInsensitive
 import           Data.Foldable          (foldl)
 import qualified Data.HashMap.Lazy      as HashMap
 import           Data.Maybe             (fromMaybe)
-import           Data.Monoid            ((<>))
+import           Data.Semigroup
 import           Data.Text              (Text)
 import qualified Data.Text              as Text
 import qualified Data.Text.Encoding     as Text
@@ -39,6 +39,21 @@ data Cassette = Cassette
   { cassetteHttpInteractions :: [Interaction]
   , cassetteRecordedWith     :: Maybe Text
   } deriving (Show, Typeable, Generic)
+
+instance Semigroup Cassette where
+  c1 <> c2 = Cassette
+    { cassetteHttpInteractions =
+        cassetteHttpInteractions c1 <> cassetteHttpInteractions c2
+    , cassetteRecordedWith =
+        cassetteRecordedWith c2 <|> cassetteRecordedWith c1
+    }
+
+instance Monoid Cassette where
+  mempty = Cassette
+    { cassetteHttpInteractions = mempty
+    , cassetteRecordedWith = mempty
+    }
+  mappend = (<>)
 
 instance ToJSON Cassette where
   toJSON Cassette{..} =
