@@ -35,6 +35,10 @@ decodeCassetteFile :: (MonadIO m, MonadThrow m) => FilePath -> m Cassette
 decodeCassetteFile path =
   either throwM pure =<< liftIO (Yaml.decodeFileEither path)
 
+encodeCassetteFile :: (MonadIO m) => FilePath -> Cassette -> m ()
+encodeCassetteFile path cassette =
+  liftIO $ Yaml.encodeFile path cassette
+
 data Cassette = Cassette
   { cassetteHttpInteractions :: [Interaction]
   , cassetteRecordedWith     :: Maybe Text
