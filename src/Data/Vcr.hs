@@ -5,6 +5,7 @@
 module Data.Vcr where
 
 import           Control.Applicative
+import           Control.Monad                (void)
 import           Control.Monad.Catch          (MonadThrow, throwM)
 import           Control.Monad.IO.Class       (MonadIO, liftIO)
 import           Data.Aeson                   (FromJSON (parseJSON),
@@ -13,11 +14,13 @@ import           Data.Aeson                   (FromJSON (parseJSON),
 import qualified Data.Aeson                   as Json
 import qualified Data.Aeson.Types             as Json (Parser)
 import           Data.ByteString              (ByteString)
+import qualified Data.ByteString              as ByteString
 import qualified Data.ByteString.Builder      as Builder
 import qualified Data.ByteString.Lazy         as LByteString
 import qualified Data.CaseInsensitive         as CaseInsensitive
 import           Data.Foldable                (foldl)
 import qualified Data.HashMap.Lazy            as HashMap
+import           Data.IORef                   as IORef
 import           Data.Maybe                   (fromMaybe)
 import           Data.Semigroup
 import           Data.Text                    (Text)
@@ -211,6 +214,13 @@ data Body = Body
   , bodyString   :: ByteString
   } deriving (Show, Eq, Ord, Typeable, Generic)
 
+-- | Construct a 'Body' from bytestring in UTF-8 encoding.
+bodyUtf8 :: ByteString -> Body
+bodyUtf8 body = Body
+  { bodyEncoding = "UTF-8"
+  , bodyString = body
+  }
+
 -- TODO: Support more funny encodings ASCII, Latin1, KOI-8, base64?, gzip-base64?
 
 instance ToJSON Body where
@@ -255,17 +265,35 @@ fromHttpResponse r = Response
       }
   }
 
-fromHttpRequest :: Http.Request -> Request
-fromHttpRequest r = Request
-  { requestMethod = Http.method r
-  , requestUri = Http.getUri r
-  , requestHeaders = Http.requestHeaders r
-  , requestBody = Just Body
-      { bodyEncoding = "UTF-8"
-      , bodyString = case Http.requestBody r of
-          Http.RequestBodyLBS lbs     -> LByteString.toStrict lbs
-          Http.RequestBodyBS  bs      -> bs
-          Http.RequestBodyBuilder _ b -> LByteString.toStrict $ Builder.toLazyByteString b
-          _                           -> error "Http request body isn't pure"
-      }
-  }
+fromHttpRequest :: Http.Request -> IO Request
+fromHttpRequest r = do
+  bodyString <- getBodyString (Http.requestBody r)
+  pure $ Request
+    { requestMethod = Http.method r
+    , requestUri = Http.getUri r
+    , requestHeaders = Http.requestHeaders r
+    , requestBody = Just Body
+        { bodyEncoding = "UTF-8"
+        , bodyString = bodyString
+        }
+    }
+  where
+    getBodyString s =
+      case s of
+        Http.RequestBodyLBS lbs     -> pure $ LByteString.toStrict lbs
+        Http.RequestBodyBS  bs      -> pure bs
+        Http.RequestBodyBuilder _size b -> pure $ LByteString.toStrict $ Builder.toLazyByteString b
+        Http.RequestBodyStream _size givesPopper -> readStream givesPopper
+        Http.RequestBodyStreamChunked givesPopper -> readStream givesPopper
+        Http.RequestBodyIO m -> m >>= getBodyString
+
+    readStream givesPopper = do
+      -- https://github.com/snoyberg/http-client/blob/eb38c5f19f451af4e5f2596feac42fa686798c3e/http-conduit/test/main.hs#L385
+      ires <- newIORef mempty
+      let loop front popper = do
+            bs <- popper
+            if ByteString.null bs
+                then writeIORef ires $ ByteString.concat $ front []
+                else loop (front . (bs:)) popper
+      void $ givesPopper $ loop id
+      readIORef ires
