@@ -5,31 +5,38 @@
 module Data.Vcr where
 
 import           Control.Applicative
-import           Control.Monad.Catch    (MonadThrow, throwM)
-import           Control.Monad.IO.Class (MonadIO, liftIO)
-import           Data.Aeson             (FromJSON (parseJSON), ToJSON (toJSON),
-                                         (.:), (.:?), (.=))
-import qualified Data.Aeson             as Json
-import qualified Data.Aeson.Types       as Json (Parser)
-import           Data.ByteString        (ByteString)
-import qualified Data.ByteString        as ByteString
-import qualified Data.CaseInsensitive   as CaseInsensitive
-import           Data.Foldable          (foldl)
-import qualified Data.HashMap.Lazy      as HashMap
-import           Data.Maybe             (fromMaybe)
+import           Control.Monad.Catch          (MonadThrow, throwM)
+import           Control.Monad.IO.Class       (MonadIO, liftIO)
+import           Data.Aeson                   (FromJSON (parseJSON),
+                                               ToJSON (toJSON), (.:), (.:?),
+                                               (.=))
+import qualified Data.Aeson                   as Json
+import qualified Data.Aeson.Types             as Json (Parser)
+import           Data.ByteString              (ByteString)
+import qualified Data.ByteString.Builder      as Builder
+import qualified Data.ByteString.Lazy         as LByteString
+import qualified Data.CaseInsensitive         as CaseInsensitive
+import           Data.Foldable                (foldl)
+import qualified Data.HashMap.Lazy            as HashMap
+import           Data.Maybe                   (fromMaybe)
 import           Data.Semigroup
-import           Data.Text              (Text)
-import qualified Data.Text              as Text
-import qualified Data.Text.Encoding     as Text
-import qualified Data.Time              as Time
-import           Data.Traversable       (for)
-import           Data.Typeable          (Typeable)
-import qualified Data.Vector            as Vector
-import qualified Data.Yaml              as Yaml
-import           GHC.Generics           (Generic)
-import           Network.HTTP.Types     as Http
-import qualified Network.URI            as Network
-import           Text.Read              (readMaybe)
+import           Data.Text                    (Text)
+import qualified Data.Text                    as Text
+import qualified Data.Text.Encoding           as Text
+import qualified Data.Time                    as Time
+import           Data.Traversable             (for)
+import           Data.Typeable                (Typeable)
+import qualified Data.Vector                  as Vector
+import qualified Data.Yaml                    as Yaml
+import           GHC.Generics                 (Generic)
+import qualified Network.HTTP.Client          as Http
+import qualified Network.HTTP.Client.Internal as Http (Response (Response),
+                                                       ResponseClose (..),
+                                                       responseClose')
+import           Network.HTTP.Types           as Http
+import qualified Network.URI                  as Network
+import           Text.Read                    (readMaybe)
+
 
 decodeCassetteFile :: (MonadIO m, MonadThrow m) => FilePath -> m Cassette
 decodeCassetteFile path =
@@ -227,3 +234,38 @@ instance FromJSON Body where
     pure Body{..}
 
 
+toHttpResponse :: Response -> Http.Response ByteString
+toHttpResponse r = Http.Response
+  { Http.responseStatus = responseStatus r
+  , Http.responseVersion = fromMaybe Http.http11 $ responseHttpVersion r
+  , Http.responseHeaders = responseHeaders r
+  , Http.responseCookieJar = mempty
+  , Http.responseBody = maybe mempty bodyString $ responseBody r
+  , Http.responseClose' = Http.ResponseClose $ pure ()
+  }
+
+fromHttpResponse :: Http.Response ByteString -> Response
+fromHttpResponse r = Response
+  { responseStatus = Http.responseStatus r
+  , responseHttpVersion = Just $ Http.responseVersion r
+  , responseHeaders = Http.responseHeaders r
+  , responseBody = Just Body
+      { bodyEncoding = "UTF-8"
+      , bodyString = Http.responseBody r
+      }
+  }
+
+fromHttpRequest :: Http.Request -> Request
+fromHttpRequest r = Request
+  { requestMethod = Http.method r
+  , requestUri = Http.getUri r
+  , requestHeaders = Http.requestHeaders r
+  , requestBody = Just Body
+      { bodyEncoding = "UTF-8"
+      , bodyString = case Http.requestBody r of
+          Http.RequestBodyLBS lbs     -> LByteString.toStrict lbs
+          Http.RequestBodyBS  bs      -> bs
+          Http.RequestBodyBuilder _ b -> LByteString.toStrict $ Builder.toLazyByteString b
+          _                           -> error "Http request body isn't pure"
+      }
+  }
