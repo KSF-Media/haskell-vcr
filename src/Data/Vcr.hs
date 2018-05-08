@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TupleSections              #-}
@@ -393,9 +394,10 @@ withRecorder path =
 responseOpen
   :: (MonadIO m)
   => Recorder -> RecordMode -> InteractionMatcher
-  -> Http.Request -> Http.Manager
-  -> m (Http.Response Http.BodyReader)
-responseOpen Recorder{..} Always matcher httpRequest manager = do
+  -> (Http.Request -> IO (Http.Response Http.BodyReader))
+  -> (forall a. Http.Response a -> IO Http.ResponseClose)
+  -> Http.Request -> m (Http.Response Http.BodyReader)
+responseOpen Recorder{..} Always matcher httpResponseOpen httpResponseClose httpRequest = do
   request <- fromHttpRequest httpRequest
   case findInteraction matcher recorderLoadedCassettes of
     Just (path, Interaction{..}) ->
@@ -404,7 +406,7 @@ responseOpen Recorder{..} Always matcher httpRequest manager = do
         (toHttpResponse interactionResponse)
     Nothing ->
       liftIO
-        $ bracketOnError (Http.responseOpen httpRequest manager) Http.responseClose
+        $ bracketOnError (httpResponseOpen httpRequest) (httpResponseClose)
         $ \response -> do
             bodyRef :: IORef Builder <- newIORef mempty
             responseVar <- newEmptyMVar
