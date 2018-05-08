@@ -1,12 +1,17 @@
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE ViewPatterns      #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE ViewPatterns               #-}
 module Data.Vcr where
 
 import           Control.Applicative
+import           Control.Concurrent.MVar      as MVar
 import           Control.Monad                (void)
-import           Control.Monad.Catch          (MonadThrow, throwM)
+import           Control.Monad.Catch          (MonadMask, MonadThrow, bracket,
+                                               bracketOnError, throwM)
 import           Control.Monad.IO.Class       (MonadIO, liftIO)
 import           Data.Aeson                   (FromJSON (parseJSON),
                                                ToJSON (toJSON), (.:), (.:?),
@@ -15,14 +20,20 @@ import qualified Data.Aeson                   as Json
 import qualified Data.Aeson.Types             as Json (Parser)
 import           Data.ByteString              (ByteString)
 import qualified Data.ByteString              as ByteString
+import           Data.ByteString.Builder      (Builder)
 import qualified Data.ByteString.Builder      as Builder
 import qualified Data.ByteString.Lazy         as LByteString
 import qualified Data.CaseInsensitive         as CaseInsensitive
 import           Data.Foldable                (foldl)
 import qualified Data.HashMap.Lazy            as HashMap
 import           Data.IORef                   as IORef
+import           Data.List                    (find)
+import           Data.Map                     (Map)
+import qualified Data.Map                     as Map
 import           Data.Maybe                   (fromMaybe)
 import           Data.Semigroup
+import           Data.Sequence                (Seq)
+import qualified Data.Sequence                as Seq
 import           Data.Text                    (Text)
 import qualified Data.Text                    as Text
 import qualified Data.Text.Encoding           as Text
@@ -35,6 +46,7 @@ import           GHC.Generics                 (Generic)
 import qualified Network.HTTP.Client          as Http
 import qualified Network.HTTP.Client.Internal as Http (Response (Response),
                                                        ResponseClose (..),
+                                                       constBodyReader,
                                                        responseClose')
 import           Network.HTTP.Types           as Http
 import qualified Network.URI                  as Network
@@ -265,9 +277,9 @@ fromHttpResponse r = Response
       }
   }
 
-fromHttpRequest :: Http.Request -> IO Request
+fromHttpRequest :: MonadIO m => Http.Request -> m Request
 fromHttpRequest r = do
-  bodyString <- getBodyString (Http.requestBody r)
+  bodyString <- liftIO $ getBodyString (Http.requestBody r)
   pure $ Request
     { requestMethod = Http.method r
     , requestUri = Http.getUri r
@@ -297,3 +309,124 @@ fromHttpRequest r = do
                 else loop (front . (bs:)) popper
       void $ givesPopper $ loop id
       readIORef ires
+
+newtype LoadedCassettes = LoadedCassettes [(FilePath, Cassette)]
+  deriving (Show, Monoid)
+
+loadedInteractions :: LoadedCassettes -> [(FilePath, Interaction)]
+loadedInteractions (LoadedCassettes cassettes) =
+  cassettes >>= \(path, cassette) ->
+    (path,) <$> cassetteHttpInteractions cassette
+
+loadCassette
+  :: (MonadIO m, MonadThrow m) => FilePath -> LoadedCassettes -> m LoadedCassettes
+loadCassette path (LoadedCassettes cassettes) = do
+  cassette <- decodeCassetteFile path
+  pure $ LoadedCassettes $ (path, cassette) : cassettes
+
+newtype InteractionMatcher = InteractionMatcher (Interaction -> Bool)
+
+matchRequest :: Request -> InteractionMatcher
+matchRequest request =
+  InteractionMatcher $ \Interaction{..} ->
+    request == interactionRequest
+
+findInteraction
+  :: InteractionMatcher -> LoadedCassettes
+  -> Maybe (FilePath, Interaction)
+findInteraction (InteractionMatcher matcher) =
+  find (matcher . snd) . loadedInteractions
+
+data RecordMode
+  = -- ^ - always replay previously recorded interactions
+    --   - always record new interactions
+    Always
+--  TODO: Once
+--  TODO: NewEpisodes
+--  TODO: None
+--  TODO: All
+  deriving (Show, Eq, Ord, Enum)
+
+newtype Recording = Recording (Map Request (Map Time.UTCTime (MVar Response)))
+  deriving (Semigroup, Monoid)
+
+recordingInteractions
+  :: MonadIO m => Recording -> m [Interaction]
+recordingInteractions (Recording recording) = liftIO $ fmap (concat . concat) $ do
+  for (Map.toList recording) $ \(interactionRequest, responses) ->
+    for (Map.toList responses) $ \(recordedAt, responseVar) -> do
+      interactionRecordedAt <- Just <$> Time.utcToLocalZonedTime recordedAt
+      mResponse <- tryTakeMVar responseVar
+      case mResponse of
+        Nothing                  -> pure []
+        Just interactionResponse -> pure [Interaction{..}]
+
+recordingCassette :: MonadIO m => Recording -> m Cassette
+recordingCassette recording = do
+  cassetteHttpInteractions <- recordingInteractions recording
+  cassetteRecordedWith <- pure $ Just "haskell/data-vcr"
+  pure Cassette{..}
+
+data Recorder = Recorder
+  { recorderRecordingRef    :: IORef Recording
+  , recorderLoadedCassettes :: LoadedCassettes
+  }
+
+createRecorder :: MonadIO m => m Recorder
+createRecorder = do
+  let recorderLoadedCassettes = mempty
+  recorderRecordingRef <- liftIO $ newIORef $ mempty
+  pure Recorder{..}
+
+saveRecorder :: MonadIO m => FilePath -> Recorder -> m ()
+saveRecorder path Recorder{..} = do
+  recording <- liftIO $ readIORef recorderRecordingRef
+  cassette <- recordingCassette recording
+  encodeCassetteFile path cassette
+
+withRecorder
+  :: (MonadIO m, MonadMask m)
+  => FilePath -> (Recorder -> m a) -> m a
+withRecorder path =
+  bracket createRecorder (saveRecorder path)
+
+responseOpen
+  :: (MonadIO m)
+  => Recorder -> RecordMode -> InteractionMatcher
+  -> Http.Request -> Http.Manager
+  -> m (Http.Response Http.BodyReader)
+responseOpen Recorder{..} Always matcher httpRequest manager = do
+  request <- fromHttpRequest httpRequest
+  case findInteraction matcher recorderLoadedCassettes of
+    Just (path, Interaction{..}) ->
+      traverse
+        (liftIO . Http.constBodyReader . LByteString.toChunks . LByteString.fromStrict)
+        (toHttpResponse interactionResponse)
+    Nothing ->
+      liftIO
+        $ bracketOnError (Http.responseOpen httpRequest manager) Http.responseClose
+        $ \response -> do
+            bodyRef :: IORef Builder <- newIORef mempty
+            responseVar <- newEmptyMVar
+            now <- Time.getCurrentTime
+            atomicModifyIORef' recorderRecordingRef $ \recording -> (,()) $
+              recording <> Recording (Map.singleton request (Map.singleton now responseVar))
+            let finalize =
+                  readIORef bodyRef >>= \bodyBuilder -> do
+                    putMVar responseVar $ fromHttpResponse response
+                      { Http.responseBody =
+                          LByteString.toStrict
+                            $ Builder.toLazyByteString bodyBuilder
+                      }
+            pure response
+              { Http.responseBody = do
+                  chunk <- Http.responseBody response
+                  chunk <$ do
+                    if ByteString.null chunk
+                      then finalize
+                      else modifyIORef bodyRef (<> Builder.byteString chunk)
+              , Http.responseClose' = Http.ResponseClose $ do
+                  Http.runResponseClose $ Http.responseClose' response
+                  finalize
+              }
+

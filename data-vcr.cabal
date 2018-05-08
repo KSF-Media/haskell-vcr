@@ -23,6 +23,7 @@ library
                        case-insensitive,
                        text,
                        unordered-containers,
+                       containers,
                        time,
                        http-types,
                        aeson,
