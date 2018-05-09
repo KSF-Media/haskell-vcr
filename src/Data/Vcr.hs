@@ -332,6 +332,12 @@ matchRequest request =
   InteractionMatcher $ \Interaction{..} ->
     request == interactionRequest
 
+matchHttpRequest :: MonadIO m => Http.Request -> m InteractionMatcher
+matchHttpRequest httpRequest = do
+  request <- fromHttpRequest httpRequest
+  pure $ InteractionMatcher $ \Interaction{..} ->
+    request == interactionRequest
+
 findInteraction
   :: InteractionMatcher -> LoadedCassettes
   -> Maybe (FilePath, Interaction)
