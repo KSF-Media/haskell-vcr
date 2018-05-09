@@ -401,7 +401,7 @@ responseOpen
   :: (MonadIO m)
   => Recorder -> RecordMode -> InteractionMatcher
   -> (Http.Request -> IO (Http.Response Http.BodyReader))
-  -> (forall a. Http.Response a -> IO Http.ResponseClose)
+  -> (forall a. Http.Response a -> IO ())
   -> Http.Request -> m (Http.Response Http.BodyReader)
 responseOpen Recorder{..} Always matcher httpResponseOpen httpResponseClose httpRequest = do
   request <- fromHttpRequest httpRequest
