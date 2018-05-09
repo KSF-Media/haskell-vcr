@@ -51,6 +51,8 @@ import qualified Network.HTTP.Client.Internal as Http (Response (Response),
                                                        responseClose')
 import           Network.HTTP.Types           as Http
 import qualified Network.URI                  as Network
+import qualified System.Directory             as Directory
+import qualified System.FilePath              as FilePath
 import           Text.Read                    (readMaybe)
 
 
@@ -322,7 +324,8 @@ loadedInteractions (LoadedCassettes cassettes) =
 loadCassette
   :: (MonadIO m, MonadThrow m) => FilePath -> LoadedCassettes -> m LoadedCassettes
 loadCassette path (LoadedCassettes cassettes) = do
-  cassette <- decodeCassetteFile path
+  fileExists <- liftIO $ Directory.doesFileExist path
+  cassette <- if fileExists then decodeCassetteFile path else pure mempty
   pure $ LoadedCassettes $ (path, cassette) : cassettes
 
 newtype InteractionMatcher = InteractionMatcher (Interaction -> Bool)
@@ -379,6 +382,12 @@ data Recorder = Recorder
   , recorderLoadedCassettes :: LoadedCassettes
   }
 
+loadRecorderCassette :: (MonadIO m, MonadThrow m) => FilePath -> Recorder -> m Recorder
+loadRecorderCassette path recorder = do
+  loadedCassettes <- loadCassette path $ recorderLoadedCassettes recorder
+  pure recorder
+    { recorderLoadedCassettes = loadedCassettes }
+
 createRecorder :: MonadIO m => m Recorder
 createRecorder = do
   let recorderLoadedCassettes = mempty
@@ -389,13 +398,16 @@ saveRecorder :: MonadIO m => FilePath -> Recorder -> m ()
 saveRecorder path Recorder{..} = do
   recording <- liftIO $ readIORef recorderRecordingRef
   cassette <- recordingCassette recording
+  liftIO $ Directory.createDirectoryIfMissing True $ FilePath.takeDirectory path
   encodeCassetteFile path cassette
 
 withRecorder
   :: (MonadIO m, MonadMask m)
   => FilePath -> (Recorder -> m a) -> m a
-withRecorder path =
-  bracket createRecorder (saveRecorder path)
+withRecorder path m =
+  bracket createRecorder (saveRecorder path) $ \recorder -> do
+    loadRecorderCassette path recorder
+    m recorder
 
 responseOpen
   :: (MonadIO m)
