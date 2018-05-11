@@ -433,7 +433,7 @@ responseOpen Recorder{..} Always matcher httpResponseOpen httpResponseClose http
               recording <> Recording (Map.singleton request (Map.singleton now responseVar))
             let finalize =
                   readIORef bodyRef >>= \bodyBuilder -> do
-                    putMVar responseVar $ fromHttpResponse response
+                    void $ tryPutMVar responseVar $ fromHttpResponse response
                       { Http.responseBody =
                           LByteString.toStrict
                             $ Builder.toLazyByteString bodyBuilder
