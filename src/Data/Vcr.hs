@@ -25,7 +25,7 @@ import           Data.ByteString.Builder      (Builder)
 import qualified Data.ByteString.Builder      as Builder
 import qualified Data.ByteString.Lazy         as LByteString
 import qualified Data.CaseInsensitive         as CaseInsensitive
-import           Data.Foldable                (foldl)
+import           Data.Foldable                (fold, foldMap, foldl)
 import qualified Data.HashMap.Lazy            as HashMap
 import           Data.IORef                   as IORef
 import           Data.List                    (find)
@@ -314,7 +314,7 @@ fromHttpRequest r = do
       readIORef ires
 
 newtype LoadedCassettes = LoadedCassettes [(FilePath, Cassette)]
-  deriving (Show, Monoid)
+  deriving (Show, Semigroup, Monoid)
 
 loadedInteractions :: LoadedCassettes -> [(FilePath, Interaction)]
 loadedInteractions (LoadedCassettes cassettes) =
@@ -360,6 +360,16 @@ data RecordMode
 newtype Recording = Recording (Map Request (Map Time.UTCTime (MVar Response)))
   deriving (Semigroup, Monoid)
 
+cassetteRecording :: (MonadIO m) => Cassette -> m Recording
+cassetteRecording Cassette{..} = liftIO $ do
+  now <- Time.getCurrentTime
+  fmap fold $ for cassetteHttpInteractions $ \Interaction{..} -> do
+    Recording
+      . Map.singleton interactionRequest
+      . Map.singleton (maybe now Time.zonedTimeToUTC interactionRecordedAt)
+      <$> newMVar interactionResponse
+
+
 recordingInteractions
   :: MonadIO m => Recording -> m [Interaction]
 recordingInteractions (Recording recording) = liftIO $ fmap (concat . concat) $ do
@@ -388,6 +398,15 @@ loadRecorderCassette path recorder = do
   pure recorder
     { recorderLoadedCassettes = loadedCassettes }
 
+loadRecorder :: (MonadIO m, MonadThrow m) => FilePath -> Recorder -> m Recorder
+loadRecorder path recorder = liftIO $ do
+  loaded@(LoadedCassettes [(_path, cassette)]) <- loadCassette path mempty
+  recording <- newIORef =<< cassetteRecording cassette
+  pure recorder
+    { recorderRecordingRef = recording
+    , recorderLoadedCassettes = loaded <> recorderLoadedCassettes recorder
+    }
+
 createRecorder :: MonadIO m => m Recorder
 createRecorder = do
   let recorderLoadedCassettes = mempty
@@ -406,8 +425,7 @@ withRecorder
   => FilePath -> (Recorder -> m a) -> m a
 withRecorder path m =
   bracket createRecorder (saveRecorder path) $ \recorder -> do
-    loadRecorderCassette path recorder
-    m recorder
+    m =<< loadRecorder path recorder
 
 responseOpen
   :: (MonadIO m)
