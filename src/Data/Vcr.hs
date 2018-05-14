@@ -423,9 +423,8 @@ saveRecorder path Recorder{..} = do
 withRecorder
   :: (MonadIO m, MonadMask m)
   => FilePath -> (Recorder -> m a) -> m a
-withRecorder path m =
-  bracket createRecorder (saveRecorder path) $ \recorder -> do
-    m =<< loadRecorder path recorder
+withRecorder path =
+  bracket (createRecorder >>= loadRecorder path) (saveRecorder path)
 
 responseOpen
   :: (MonadIO m)
