@@ -18,8 +18,15 @@ library
   exposed-modules:     Network.HTTP.Client.Vcr
   build-depends:       base >= 4.7 && < 5,
                        data-vcr,
-                       http-client
+                       http-client,
+                       aeson,
+                       exceptions,
+                       bytestring,
+                       time,
+                       containers,
+                       http-types
   default-language:    Haskell2010
+  ghc-options:         -Wall
 
 source-repository head
   type:     git

@@ -2,5 +2,6 @@ resolver: lts-11.5
 packages:
 - data-vcr
 - tasty-vcr
+- http-client-vcr
 nix:
   enable: true
