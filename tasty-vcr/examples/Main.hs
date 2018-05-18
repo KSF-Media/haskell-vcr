@@ -1,12 +1,12 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Main where
 
-import           Data.Monoid        ((<>))
-import           Data.Proxy         (Proxy (..))
-import           Test.Tasty         as Tasty
-import           Test.Tasty.HUnit   as HUnit
-import           Test.Tasty.Options as Tasty
-import           Test.Tasty.Vcr     as Vcr
+import           Data.Monoid                ((<>))
+import           Data.Proxy                 (Proxy (..))
+import           Test.Tasty                 as Tasty
+import           Test.Tasty.HUnit           as HUnit
+import           Test.Tasty.Ingredients.Vcr as Vcr
+import           Test.Tasty.Options         as Tasty
 
 main :: IO ()
 main = do

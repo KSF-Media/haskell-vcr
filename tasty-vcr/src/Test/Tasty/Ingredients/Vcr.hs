@@ -1,4 +1,4 @@
-module Test.Tasty.Vcr where
+module Test.Tasty.Ingredients.Vcr where
 
 import qualified Data.Char              as Char
 import           Data.Proxy             (Proxy (Proxy))
