@@ -2,7 +2,7 @@ name:                http-client-vcr
 version:             0.1.0.0
 -- synopsis:
 -- description:
-homepage:            https://github.com/KSF-Media/data-vcr#readme
+homepage:            https://github.com/KSF-Media/haskell-vcr#readme
 license:             BSD3
 license-file:        LICENSE
 author:              Konstantin Zudov
@@ -30,4 +30,4 @@ library
 
 source-repository head
   type:     git
-  location: https://github.com/githubuser/data-vcr
+  location: https://github.com/KSF-Media/haskell-vcr
