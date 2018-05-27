@@ -351,3 +351,15 @@ withRecorder
   => FilePath -> (Recorder -> m a) -> m a
 withRecorder path =
   bracket (createRecorder >>= loadRecorder path) (saveRecorder path)
+
+-- | Lookup response that can be replayed for a given request.
+--   Acts according to specified mode and interaction matcher.
+lookupResponse :: MonadIO m => Recorder -> RecordMode -> InteractionMatcher -> m (Maybe Response)
+lookupResponse Recorder{..} Always matcher =
+  -- Currently we don't actually need any IO here, but we may want to have it in the future
+  -- to access IORefs, or execute user provided functions that allow IO.
+  -- Thus the type already requires MonadIO.
+  pure $ do
+    (_cassettePath, Interaction{..}) <- findInteraction matcher recorderLoadedCassettes
+    pure interactionResponse
+

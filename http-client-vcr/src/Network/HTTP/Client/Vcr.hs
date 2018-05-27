@@ -94,13 +94,14 @@ responseOpen
   -> (Http.Request -> IO (Http.Response Http.BodyReader))
   -> (forall a. Http.Response a -> IO ())
   -> Http.Request -> m (Http.Response Http.BodyReader)
-responseOpen Recorder{..} Always matcher httpResponseOpen httpResponseClose httpRequest = do
+responseOpen recorder@Recorder{..} mode@Always matcher httpResponseOpen httpResponseClose httpRequest = do
   request <- fromHttpRequest httpRequest
-  case findInteraction matcher recorderLoadedCassettes of
-    Just (_path, Vcr.Interaction{..}) ->
+  replay <- Vcr.lookupResponse recorder mode matcher
+  case replay of
+    Just vcrResponse ->
       traverse
         (liftIO . Http.constBodyReader . LByteString.toChunks . LByteString.fromStrict)
-        (toHttpResponse interactionResponse)
+        (toHttpResponse vcrResponse)
     Nothing ->
       liftIO
         $ bracketOnError (httpResponseOpen httpRequest) (httpResponseClose)
