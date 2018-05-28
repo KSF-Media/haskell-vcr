@@ -363,3 +363,9 @@ lookupResponse Recorder{..} Always matcher =
     (_cassettePath, Interaction{..}) <- findInteraction matcher recorderLoadedCassettes
     pure interactionResponse
 
+recordResponse :: MonadIO m => Recorder -> Time.UTCTime -> Request -> Response -> m ()
+recordResponse Recorder{..} time request response = liftIO $ do
+  responseVar <- newMVar response
+  IORef.atomicModifyIORef' recorderRecordingRef $ \recording -> (,()) $
+    recording <> Recording (Map.singleton request (Map.singleton time responseVar))
+

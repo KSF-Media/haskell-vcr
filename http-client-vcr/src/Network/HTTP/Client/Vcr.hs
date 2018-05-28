@@ -6,7 +6,6 @@
 {-# OPTIONS_GHC -Wall            #-}
 module Network.HTTP.Client.Vcr where
 
-import           Control.Concurrent.MVar      as MVar
 import           Control.Monad                (void)
 import           Control.Monad.Catch          (bracketOnError)
 import           Control.Monad.IO.Class       (MonadIO, liftIO)
@@ -16,7 +15,6 @@ import           Data.ByteString.Builder      (Builder)
 import qualified Data.ByteString.Builder      as Builder
 import qualified Data.ByteString.Lazy         as LByteString
 import           Data.IORef                   as IORef
-import qualified Data.Map                     as Map
 import           Data.Maybe                   (fromMaybe)
 import           Data.Semigroup
 import qualified Data.Time                    as Time
@@ -107,16 +105,12 @@ responseOpen recorder@Recorder{..} mode@Always matcher httpResponseOpen httpResp
         $ bracketOnError (httpResponseOpen httpRequest) (httpResponseClose)
         $ \response -> do
             bodyRef :: IORef Builder <- newIORef mempty
-            responseVar <- newEmptyMVar
             now <- Time.getCurrentTime
-            atomicModifyIORef' recorderRecordingRef $ \recording -> (,()) $
-              recording <> Recording (Map.singleton request (Map.singleton now responseVar))
             let finalize =
                   readIORef bodyRef >>= \bodyBuilder -> do
-                    void $ tryPutMVar responseVar $ fromHttpResponse response
+                    Vcr.recordResponse recorder now request $ fromHttpResponse response
                       { Http.responseBody =
-                          LByteString.toStrict
-                            $ Builder.toLazyByteString bodyBuilder
+                          LByteString.toStrict $ Builder.toLazyByteString bodyBuilder
                       }
             pure response
               { Http.responseBody = do
