@@ -302,10 +302,8 @@ recordingInteractions (Recording recording) = liftIO $ fmap (concat . concat) $ 
   for (Map.toList recording) $ \(interactionRequest, responses) ->
     for (Map.toList responses) $ \(recordedAt, responseVar) -> do
       interactionRecordedAt <- Just <$> Time.utcToLocalZonedTime recordedAt
-      mResponse <- tryTakeMVar responseVar
-      case mResponse of
-        Nothing                  -> pure []
-        Just interactionResponse -> pure [Interaction{..}]
+      interactionResponse <- takeMVar responseVar
+      pure [ Interaction{..} ]
 
 recordingCassette :: MonadIO m => Recording -> m Cassette
 recordingCassette recording = do
