@@ -95,6 +95,13 @@ data Interaction = Interaction
 timestampFormat :: String
 timestampFormat = "%a, %d %b %Y %H:%M:%S %Z"
 
+extendedTimeLocale :: Time.TimeLocale
+extendedTimeLocale = Time.defaultTimeLocale
+  { Time.knownTimeZones = [ Time.TimeZone (2 * 60) False "EET"
+                          , Time.TimeZone (3 * 60) False "EEST"
+                          ] <> Time.knownTimeZones Time.defaultTimeLocale
+  }
+
 instance ToJSON Interaction where
   toJSON Interaction{..} =
     Json.object
@@ -103,7 +110,7 @@ instance ToJSON Interaction where
       , "recorded_at" .= (formatTimestamp <$> interactionRecordedAt)
       ]
     where
-      formatTimestamp = Time.formatTime Time.defaultTimeLocale timestampFormat
+      formatTimestamp = Time.formatTime extendedTimeLocale timestampFormat
 
 instance FromJSON Interaction where
   parseJSON = Json.withObject "Interaction" $ \o -> do
@@ -118,7 +125,7 @@ instance FromJSON Interaction where
     pure Interaction{..}
     where
       parseTimestamp =
-        Time.parseTimeM True Time.defaultTimeLocale timestampFormat
+        Time.parseTimeM True extendedTimeLocale timestampFormat
 
 data Request = Request
   { requestMethod  :: Http.Method
