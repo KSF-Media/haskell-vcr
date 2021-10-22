@@ -1,10 +1,10 @@
-resolver: lts-11.9
+resolver: lts-18.13
 packages:
 - data-vcr
 - tasty-vcr
 - http-client-vcr
 nix:
-  enable: true
+  enable: false
   packages:
   - zlib
 

@@ -16,7 +16,6 @@ import qualified Data.ByteString.Builder      as Builder
 import qualified Data.ByteString.Lazy         as LByteString
 import           Data.IORef                   as IORef
 import           Data.Maybe                   (fromMaybe)
-import           Data.Semigroup
 import qualified Data.Time                    as Time
 import           Data.Vcr                     as Vcr
 import qualified Network.HTTP.Client          as Http
@@ -92,7 +91,7 @@ responseOpen
   -> (Http.Request -> IO (Http.Response Http.BodyReader))
   -> (forall a. Http.Response a -> IO ())
   -> Http.Request -> m (Http.Response Http.BodyReader)
-responseOpen recorder@Recorder{..} mode@Always matcher httpResponseOpen httpResponseClose httpRequest = do
+responseOpen recorder@Recorder{} mode@Always matcher httpResponseOpen httpResponseClose httpRequest = do
   request <- fromHttpRequest httpRequest
   replay <- Vcr.lookupResponse recorder mode matcher
   case replay of

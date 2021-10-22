@@ -20,14 +20,13 @@ import qualified Data.Aeson              as Json
 import qualified Data.Aeson.Types        as Json (Parser)
 import           Data.ByteString         (ByteString)
 import qualified Data.CaseInsensitive    as CaseInsensitive
-import           Data.Foldable           (fold, foldl)
+import           Data.Foldable           (fold)
 import qualified Data.HashMap.Lazy       as HashMap
 import           Data.IORef              as IORef
 import           Data.List               (find)
 import           Data.Map                (Map)
 import qualified Data.Map                as Map
 import           Data.Maybe              (fromMaybe)
-import           Data.Semigroup
 import           Data.Text               (Text)
 import qualified Data.Text               as Text
 import qualified Data.Text.Encoding      as Text
@@ -373,4 +372,3 @@ recordResponse Recorder{..} time request response = liftIO $ do
   responseVar <- newMVar response
   IORef.atomicModifyIORef' recorderRecordingRef $ \recording -> (,()) $
     recording <> Recording (Map.singleton request (Map.singleton time responseVar))
-
