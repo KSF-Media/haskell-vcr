@@ -17,6 +17,8 @@ import           Control.Monad.IO.Class  (MonadIO, liftIO)
 import           Data.Aeson              (FromJSON (parseJSON), ToJSON (toJSON),
                                           (.:), (.:?), (.=))
 import qualified Data.Aeson              as Json
+import qualified Data.Aeson.Key          as Key
+import qualified Data.Aeson.KeyMap       as KeyMap
 import qualified Data.Aeson.Types        as Json (Parser)
 import           Data.ByteString         (ByteString)
 import qualified Data.CaseInsensitive    as CaseInsensitive
@@ -201,21 +203,21 @@ instance FromJSON Response where
 parseJsonHeaders :: Json.Value -> Json.Parser [Http.Header]
 parseJsonHeaders =
   Json.withObject "Headers" $
-    fmap concat . mapM (uncurry parseHeader) . HashMap.toList
+    fmap concat . mapM (uncurry parseHeader) . KeyMap.toList
   where
-    parseHeader key =
+    parseHeader (Key.toText -> key) =
       Json.withArray "Header.values" $ \values ->
         for (Vector.toList values) $ Json.withText "text" $ \value ->
           pure (CaseInsensitive.mk $ Text.encodeUtf8 key, Text.encodeUtf8 value)
 
 headersToJson :: [Http.Header] -> Json.Value
 headersToJson =
-    Json.Object . fmap toJSON . foldl addHeader HashMap.empty
+    Json.Object . fmap toJSON . KeyMap.fromHashMap . foldl addHeader HashMap.empty
   where
     addHeader headers (k, v) =
       HashMap.insertWith
         (\new old -> old <> new)
-        (Text.decodeUtf8 $ CaseInsensitive.original k)
+        (Key.fromText $ Text.decodeUtf8 $ CaseInsensitive.original k)
         ([Text.decodeUtf8 v])
         headers
 
@@ -373,4 +375,3 @@ recordResponse Recorder{..} time request response = liftIO $ do
   responseVar <- newMVar response
   IORef.atomicModifyIORef' recorderRecordingRef $ \recording -> (,()) $
     recording <> Recording (Map.singleton request (Map.singleton time responseVar))
-
