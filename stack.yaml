@@ -1,4 +1,4 @@
-resolver: lts-11.9
+resolver: lts-19.6
 packages:
 - data-vcr
 - tasty-vcr
@@ -7,4 +7,3 @@ nix:
   enable: true
   packages:
   - zlib
-
